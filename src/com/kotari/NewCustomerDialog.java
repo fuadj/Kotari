@@ -90,7 +90,7 @@ public class NewCustomerDialog extends JDialog {
 
         Connection connection = null;
         try {
-            connection = DriverManager.getConnection(DbFile.connection_string);
+            connection = DriverManager.getConnection(DbUtil.connection_string);
             PreparedStatement stmt = connection.prepareStatement("insert into customer " +
                     "(name, floor, shop_location, date_of_install, contract_no, type_of_business, initial_reading) " +
                     " values " +
