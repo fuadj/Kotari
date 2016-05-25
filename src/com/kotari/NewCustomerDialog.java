@@ -9,6 +9,7 @@ import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.*;
 import java.sql.*;
+import java.util.concurrent.ExecutionException;
 
 public class NewCustomerDialog extends JDialog {
     private JPanel contentPane;
@@ -23,12 +24,23 @@ public class NewCustomerDialog extends JDialog {
     private JTextField dialog_new_customer_type_of_business;
     private JLabel dialog_new_customer_result;
 
+    public interface CustomerListener {
+        void customerAdded();
+        void cancelSelected();
+    }
+
+    public CustomerListener mListener;
+
+    public void setListener(CustomerListener listener) {
+        mListener = listener;
+    }
+
     public NewCustomerDialog() {
         setContentPane(contentPane);
         setModal(true);
         getRootPane().setDefaultButton(buttonOK);
 
-        setLocationRelativeTo(null);
+        setTitle("New Customer");
 
         setMinimumSize(new Dimension(450, 300));
 
@@ -88,10 +100,8 @@ public class NewCustomerDialog extends JDialog {
         boolean success = false;
         String error_msg = null;
 
-        Connection connection = null;
-        try {
-            connection = DriverManager.getConnection(DbUtil.connection_string);
-            PreparedStatement stmt = connection.prepareStatement("insert into customer " +
+        try (Connection conn = DriverManager.getConnection(DbUtil.connection_string)) {
+            PreparedStatement stmt = conn.prepareStatement("insert into customer " +
                     "(name, floor, shop_location, date_of_install, contract_no, type_of_business, initial_reading) " +
                     " values " +
                     " (?, ?, ?, ?, ?, ?, ?)");
@@ -109,13 +119,6 @@ public class NewCustomerDialog extends JDialog {
         } catch (SQLException e) {
             success = false;
             error_msg = e.getMessage();
-        } finally {
-            try {
-                if (connection != null) connection.close();
-            } catch (SQLException e) {
-                success = false;
-                error_msg = e.getMessage();
-            }
         }
 
         return new Pair<>(success, error_msg);
@@ -135,29 +138,31 @@ public class NewCustomerDialog extends JDialog {
         } catch (NumberFormatException e) {
         }
 
-        Thread t = new Thread() {
+        new SwingWorker<Pair<Boolean, String>, Void>() {
             @Override
-            public void run() {
-                final Pair<Boolean, String> result = createCustomer(customer);
-
-                SwingUtilities.invokeLater(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (result.getKey() == true) {      // i.e: success
-                            dispose();
-                        } else {
-                            // display the error message
-                            dialog_new_customer_result.setText(result.getValue());
-                        }
-                    }
-                });
+            protected Pair<Boolean, String> doInBackground() throws Exception {
+                return createCustomer(customer);
             }
-        };
-        t.start();
+            @Override
+            protected void done() {
+                try {
+                    Pair<Boolean, String> result = get();
+                    if (result.getKey() == true) {      // i.e: success
+                        mListener.customerAdded();
+                        dispose();
+                    } else {
+                        // display the error message
+                        dialog_new_customer_result.setText(result.getValue());
+                    }
+                } catch (InterruptedException | ExecutionException e) {
+                    dialog_new_customer_result.setText(e.getMessage());
+                }
+            }
+        }.execute();
     }
 
     private void onCancel() {
-// add your code here if necessary
+        mListener.cancelSelected();
         dispose();
     }
 
