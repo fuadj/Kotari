@@ -8,8 +8,17 @@ import java.sql.*;
 /**
  * Created by fuad on 5/2/16.
  */
-public class KotariUI {
+public class KotariUI extends JFrame {
     public KotariUI() {
+        setTitle("Kotari");
+        setMinimumSize(new Dimension(500, 500));
+
+        setLocationRelativeTo(null);
+        setContentPane(kotariMainPanel);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        pack();
+        setVisible(true);
+
         btnPrevPeriod.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -71,18 +80,13 @@ public class KotariUI {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        JFrame frame = new JFrame("Kotari");
-        frame.setTitle("Kotari");
-        frame.setMinimumSize(new Dimension(500, 500));
-
-        frame.setLocationRelativeTo(null);
-
-        frame.setContentPane(new KotariUI().kotariMainPanel);
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.pack();
-        frame.setVisible(true);
+        EventQueue.invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                new KotariUI().setVisible(true);
+            }
+        });
     }
-
 
     private JPanel kotariMainPanel;
     private JLabel textFieldCompanyTitle;
