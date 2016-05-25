@@ -44,8 +44,11 @@ public class DbUtil {
 
             stmt.execute("create table if not exists reading ( " +
                     "reading_id         integer primary key autoincrement, " +
+                    "date               text not null);");
+                    /*
                     "date               text not null, " +
                     "name               text not null);");
+                    */
 
             stmt.execute("create table if not exists customer_reading ( " +
                     "r_id integer       references reading(reading_id), " +
@@ -55,7 +58,7 @@ public class DbUtil {
                     "delta_change       integer not null, " +
                     "below_50           real not null, " +
                     "above_50           real not null, " +
-                    "service_change     real not null, " +
+                    "service_charge     real not null, " +
                     "total_payment      real not null);");
 
         } catch (ClassNotFoundException e) {
