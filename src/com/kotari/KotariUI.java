@@ -30,23 +30,40 @@ public class KotariUI extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 selected_reading_index--;
-                updateMeterReadingStatus();
-                updateCustomerListTable();
+                updateDisplay();
             }
         });
         nextReadingButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 selected_reading_index++;
-                updateMeterReadingStatus();
-                updateCustomerListTable();
+                updateDisplay();
             }
         });
         setReadingButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
+                SetCustomerReading dialog = new SetCustomerReading();
+                int customer_id = row_to_customer_mapping.get(
+                        customerListTable.getSelectedRow());
+                int prev_reading_id = -1;
+                if (selected_reading_index > 0) {
+                    prev_reading_id = reading_id_names.get(selected_reading_index-1).getKey();
+                }
 
-                updateCustomerListTable();
+                dialog.setReadingValues(current_reading_id, prev_reading_id, customer_id);
+                dialog.setLocationRelativeTo(customerListTable);
+                dialog.setListener(new SetCustomerReading.CustomerReadingListener() {
+                    @Override
+                    public void readingSet() {
+                        updateDisplay();
+                    }
+
+                    @Override
+                    public void cancelSelected() { }
+                });
+                dialog.setVisible(true);
+                updateDisplay();
             }
         });
         infoButton.addActionListener(new ActionListener() {
@@ -74,7 +91,7 @@ public class KotariUI extends JFrame {
                 dialog.setListener(new NewCustomerDialog.CustomerListener() {
                     @Override
                     public void customerAdded() {
-                        updateCustomerListTable();
+                        updateDisplay();
                     }
 
                     @Override
@@ -99,7 +116,7 @@ public class KotariUI extends JFrame {
                 dialog.setListener(new NewReadingDialog.ReadingListener() {
                     @Override
                     public void readingAdded() {
-                        updateMeterReadingStatus();
+                        updateDisplay();
                     }
 
                     @Override
@@ -122,8 +139,7 @@ public class KotariUI extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowOpened(WindowEvent e) {
-                updateMeterReadingStatus();
-                updateCustomerListTable();
+                updateDisplay();
             }
         });
     }
@@ -135,10 +151,7 @@ public class KotariUI extends JFrame {
             selected = true;
         }
 
-        setReadingButton.setEnabled(selected &&
-                current_reading_id != -1 &&
-                reading_id_names != null &&
-                !reading_id_names.isEmpty());
+        setReadingButton.setEnabled(selected && selected_reading_index != -1);
         infoButton.setEnabled(selected);
         historyButton.setEnabled(selected);
         printButton.setEnabled(selected);
@@ -147,21 +160,24 @@ public class KotariUI extends JFrame {
     private static String[][] columnsToShow = {
             // from the customer table
             //{"Customer Name", "c.name"},
+            // this will not be shown, only for indexing purposes
+            {"_customer_id_", "c.customer_id"},
+
             {"Name", "c.name"},
             {"Floor", "c.floor"},
             {"Shop", "c.shop_location"},
             //{"Business Type", "c.type_of_business"},
 
             // from the reading table
-            {"Reading Date", "c_r.date"},
+            {"Reading Date", "r.date"},
 
             // from the customer_reading table
-            {"Previous", "c_r.previous_reading"},
-            {"Current", "c_r.current_reading"},
-            {"Below 50kW", "c_r.below_50"},
-            {"Above 50kW", "c_r.above_50"},
-            //{"Service Charge", "c_r.service_charge"},
-            {"Total Payment", "c_r.total_payment"}
+            {"Previous", "cr.previous_reading"},
+            {"Current", "cr.current_reading"},
+            {"Below 50kW", "cr.below_50"},
+            {"Above 50kW", "cr.above_50"},
+            //{"Service Charge", "cr.service_charge"},
+            {"Total Payment", "cr.total_payment"}
     };
 
     /**
@@ -171,106 +187,102 @@ public class KotariUI extends JFrame {
         if (index > 1) index = 1;
         Vector<String> result = new Vector<>();
         for (int i = 0; i < columnsToShow.length; i++) {
+            if (columnsToShow[i][0].equals("_customer_id_")) continue;
+
             result.add(columnsToShow[i][index]);
         }
         return result;
     }
 
-    void updateCustomerListTable() {
-        new SwingWorker<Void, Void>() {
-            @Override
-            protected Void doInBackground() throws Exception {
-                tableModel = new DefaultTableModel() {
-                    @Override
-                    public boolean isCellEditable(int row, int column) { return false; }
-                };
+    void updateReadingValues() {
+        try (Connection conn = DriverManager.
+                getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
+            ResultSet rs = stmt.executeQuery("select reading_id, date from reading order by reading_id asc;");
 
-                try (Connection conn = DriverManager.
-                        getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
+            int previous_size = (reading_id_names != null) ? reading_id_names.size() : 0;
+            reading_id_names = new Vector<Pair<Integer, String>>();
 
-                    String columns = StringUtils.join(selectColumnIndex(1), ",");
-                    String query = "" +
-                            "select " + columns + " from customer c LEFT JOIN " +
-                            "       (select * from reading r " +
-                            "           INNER JOIN customer_reading cr " +
-                            "           ON r.reading_id = cr.r_id) c_r " +
-                            " ON (c.customer_id = c_r.c_id) ";
-                    if (current_reading_id != -1) {
-                        query += " where c_r.reading_id is NULL or c_r.reading_id = " + current_reading_id + " ";
-                    }
+            while (rs.next()) {
+                int id = rs.getInt(1);
+                String date = rs.getString(2);
 
-                    query += " order by c.customer_id asc";
+                reading_id_names.add(new Pair<>(id, date));
+            }
 
-                    ResultSet rs = stmt.executeQuery(query);
-
-                    Vector<String> columnNames = selectColumnIndex(0);
-                    System.out.println("Columns: " + columnNames);
-
-                    Vector<Vector<Object>> data = new Vector<Vector<Object>>();
-                    while (rs.next()) {
-                        Vector<Object> vector = new Vector<Object>();
-                        for (int i = 1; i <= columnNames.size(); i++) {
-                            vector.add(rs.getObject(i));
-                        }
-                        data.add(vector);
-                    }
-
-                    tableModel.setDataVector(data, columnNames);
-
-                    updateMeterReadingStatus();
-                } catch (Exception e) {
-                    System.err.println("Exception in Load Data" + e.getMessage());
+            if (reading_id_names.isEmpty()) {
+                reading_id_names = null;
+                selected_reading_index = -1;
+                current_reading_id = -1;
+            } else {
+                // its our first time searching for ids
+                // OR
+                // there is a newly added reading, make it the current reading
+                if (selected_reading_index == -1 || (previous_size != reading_id_names.size())) {
+                    selected_reading_index = reading_id_names.size() - 1;
                 }
-                return null;
+                current_reading_id = reading_id_names.get(selected_reading_index).getKey();
             }
+        } catch (Exception e) {
+            reading_id_names = null;
+            selected_reading_index = -1;
 
-            @Override
-            protected void done() {
-                customerListTable.setModel(tableModel);
-            }
-        }.execute();
+            System.err.println("Exception in Load Reading Data" + e.getMessage());
+        }
     }
 
-    void updateMeterReadingStatus() {
+    void updateTableModel() {
+        tableModel = new DefaultTableModel() {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+
+        try (Connection conn = DriverManager.
+                getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
+
+            String columns = StringUtils.join(selectColumnIndex(1), ",");
+            String query = "" +
+                    "select " + columns + " from customer c " +
+                    " LEFT JOIN customer_reading cr " +
+                    "   ON cr.c_id = c.customer_id " +
+                    " LEFT JOIN reading r " +
+                    "   ON r.reading_id = cr.r_id " +
+                    " AND r.reading_id = " + current_reading_id +
+                    " order by c.customer_id asc";
+
+            ResultSet rs = stmt.executeQuery(query);
+
+            row_to_customer_mapping = new HashMap<>();
+
+            Vector<String> columnNames = selectColumnIndex(0);
+            System.out.println("Current reading id " + current_reading_id);
+            System.out.println("Current selected index " + selected_reading_index);
+
+            Vector<Vector<Object>> data = new Vector<Vector<Object>>();
+            while (rs.next()) {
+                Vector<Object> vector = new Vector<Object>();
+                for (int i = 1; i <= columnNames.size(); i++) {
+                    if (columnNames.get(i-1).equals("_customer_id_")) {
+                        row_to_customer_mapping.put(data.size(), (Integer)rs.getObject(i));
+                    } else {
+                        vector.add(rs.getObject(i));
+                    }
+                }
+                data.add(vector);
+            }
+
+            tableModel.setDataVector(data, columnNames);
+
+        } catch (Exception e) {
+            System.err.println("Exception in Load Data" + e.getMessage());
+        }
+    }
+
+    void updateDisplay() {
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
-                try (Connection conn = DriverManager.
-                        getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
-                    ResultSet rs = stmt.executeQuery("select reading_id, date from reading order by reading_id asc;");
-
-                    int previous_size = (reading_id_names != null) ? reading_id_names.size() : 0;
-                    reading_id_names = new Vector<Pair<Integer, String>>();
-
-                    while (rs.next()) {
-                        int id = rs.getInt(1);
-                        String date = rs.getString(2);
-
-                        reading_id_names.add(new Pair<>(id, date));
-                    }
-
-                    if (reading_id_names.isEmpty()) {
-                        reading_id_names = null;
-                        current_reading_id = -1;
-                        selected_reading_index = -1;
-                    } else {
-                        // its our first time searching for ids
-                        // OR
-                        // there is a newly added reading, make it the current reading
-                        if (current_reading_id == -1 ||
-                                selected_reading_index == -1 ||
-                                (previous_size != reading_id_names.size())) {
-                            selected_reading_index = reading_id_names.size() - 1;
-                            current_reading_id = reading_id_names.get(selected_reading_index).getKey();
-                        }
-                    }
-                } catch (Exception e) {
-                    reading_id_names = null;
-                    current_reading_id = -1;
-                    selected_reading_index = -1;
-
-                    System.err.println("Exception in Load Reading Data" + e.getMessage());
-                }
+                updateReadingValues();
+                updateTableModel();
                 return null;
             }
 
@@ -301,6 +313,9 @@ public class KotariUI extends JFrame {
 
                 nextReadingButton.setEnabled(enable_next);
                 btnPrevPeriod.setEnabled(enable_prev);
+
+                customerListTable.setModel(tableModel);
+
             }
         }.execute();
     }
@@ -323,6 +338,7 @@ public class KotariUI extends JFrame {
         });
     }
 
+    private Map<Integer, Integer> row_to_customer_mapping = null;
     private Vector<Pair<Integer, String>> reading_id_names = null;
     private int selected_reading_index = -1;
     private int current_reading_id = -1;
