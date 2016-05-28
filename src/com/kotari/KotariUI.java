@@ -169,15 +169,15 @@ public class KotariUI extends JFrame {
             //{"Business Type", "c.type_of_business"},
 
             // from the reading table
-            {"Reading Date", "r.date"},
+            {"Reading Date", "c_r.date"},
 
             // from the customer_reading table
-            {"Previous", "cr.previous_reading"},
-            {"Current", "cr.current_reading"},
-            {"Below 50kW", "cr.below_50"},
-            {"Above 50kW", "cr.above_50"},
-            //{"Service Charge", "cr.service_charge"},
-            {"Total Payment", "cr.total_payment"}
+            {"Previous", "c_r.previous_reading"},
+            {"Current", "c_r.current_reading"},
+            {"Below 50kW", "c_r.below_50"},
+            {"Above 50kW", "c_r.above_50"},
+            //{"Service Charge", "c_r.service_charge"},
+            {"Total Payment", "c_r.total_payment"}
     };
 
     /**
@@ -242,20 +242,17 @@ public class KotariUI extends JFrame {
             String columns = StringUtils.join(selectColumnIndex(1), ",");
             String query = "" +
                     "select " + columns + " from customer c " +
-                    " LEFT JOIN customer_reading cr " +
-                    "   ON cr.c_id = c.customer_id " +
-                    " LEFT JOIN reading r " +
-                    "   ON r.reading_id = cr.r_id " +
-                    " AND r.reading_id = " + current_reading_id +
-                    " order by c.customer_id asc";
+                    " LEFT JOIN (select * from " +
+                    "       reading r INNER JOIN customer_reading cr " +
+                    "       ON r.reading_id = cr.r_id " +
+                    "           WHERE r.reading_id = " + current_reading_id + " ) c_r " +
+                    " ON c.customer_id = c_r.c_id ";
 
             ResultSet rs = stmt.executeQuery(query);
 
             row_to_customer_mapping = new HashMap<>();
 
             Vector<String> columnNames = selectColumnIndex(0);
-            System.out.println("Current reading id " + current_reading_id);
-            System.out.println("Current selected index " + selected_reading_index);
 
             Vector<Vector<Object>> data = new Vector<Vector<Object>>();
             while (rs.next()) {
