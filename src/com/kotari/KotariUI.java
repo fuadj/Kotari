@@ -187,7 +187,8 @@ public class KotariUI extends JFrame {
         if (index > 1) index = 1;
         Vector<String> result = new Vector<>();
         for (int i = 0; i < columnsToShow.length; i++) {
-            if (columnsToShow[i][0].equals("_customer_id_")) continue;
+            if (index == 0 &&
+                    columnsToShow[i][0].equals("_customer_id_")) continue;
 
             result.add(columnsToShow[i][index]);
         }
@@ -236,6 +237,8 @@ public class KotariUI extends JFrame {
             public boolean isCellEditable(int row, int column) { return false; }
         };
 
+        row_to_customer_mapping = new HashMap<>();
+
         try (Connection conn = DriverManager.
                 getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
 
@@ -250,15 +253,13 @@ public class KotariUI extends JFrame {
 
             ResultSet rs = stmt.executeQuery(query);
 
-            row_to_customer_mapping = new HashMap<>();
-
             Vector<String> columnNames = selectColumnIndex(0);
 
             Vector<Vector<Object>> data = new Vector<Vector<Object>>();
             while (rs.next()) {
                 Vector<Object> vector = new Vector<Object>();
                 for (int i = 1; i <= columnNames.size(); i++) {
-                    if (columnNames.get(i-1).equals("_customer_id_")) {
+                    if (i == 1) {
                         row_to_customer_mapping.put(data.size(), (Integer)rs.getObject(i));
                     } else {
                         vector.add(rs.getObject(i));
