@@ -206,10 +206,10 @@ public class SetCustomerReading extends JDialog {
                             " from customer c LEFT JOIN " +
                             "       (select * from reading r " +
                             "           INNER JOIN customer_reading cr " +
-                            "           ON r.reading_id = cr.r_id) c_r " +
-                            " ON (c.customer_id = c_r.c_id) " + "" +
-                            " where c.customer_id = " + customer_id + " AND " +
-                            " c_r.reading_id is NULL or c_r.reading_id = " + prev_reading_id + " ";
+                            "           ON r.reading_id = cr.r_id " +
+                            "               WHERE r.reading_id = " + prev_reading_id + ") c_r " +
+                            " ON (c.customer_id = c_r.c_id) " +
+                            "   WHERE c.customer_id = " + customer_id;
 
                     ResultSet rs = stmt.executeQuery(query);
 
