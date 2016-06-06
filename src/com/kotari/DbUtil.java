@@ -25,6 +25,12 @@ public class DbUtil {
 
             stmt.execute("PRAGMA foreign_keys = ON");
 
+            stmt.execute("create table if not exists users ( " +
+                "id         integer primary key autoincrement, " +
+                "name       text not null, " +
+                "pass_hash  text not null, " +
+                "role       integer not null);");
+
             // this table is only used to store the building owner company's details
             stmt.execute("create table if not exists company ( " +
                     // this id is used to check if the company exists(we always set it to 1 for the company)

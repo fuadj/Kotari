@@ -6,8 +6,7 @@ package com.kotari;
 public class Tariffs {
     public static final String[] TARIFF_NAMES = {
             "Single Phase",
-            "Three Phase",
-            "Passive-Reactive"
+            "Three Phase"
     };
 
     public static final int ID_TARIFF_SINGLE_PHASE = 0;

@@ -24,6 +24,35 @@ public class KotariUI extends JFrame {
         return row_to_customer_mapping.get(model_index);
     }
 
+    void setUserRolePermissions() {
+        User u = User.getSingleton();
+        switch (u.role) {
+            // This has access to ALL
+            case User.ROLE_ROOT: break;
+
+            case User.ROLE_ADMIN:
+                //usersButton.setVisible(false);
+                break;
+
+            case User.ROLE_READER:
+                printButton.setVisible(false);
+                printAllButton.setVisible(false);
+                // we want it to fallthrough
+                // the reader has a "super-set" of forbidden things
+            case User.ROLE_SUPERVISOR:
+                btnPrevPeriod.setVisible(false);
+                nextReadingButton.setVisible(false);
+                deleteReadingButton.setVisible(false);
+                newReadingButton.setVisible(false);
+                infoButton.setVisible(false);
+                usersButton.setVisible(false);
+                metersButton.setVisible(false);
+                addCustomerButton.setVisible(false);
+                deleteCustomerButton.setVisible(false);
+                break;
+        }
+    }
+
     public KotariUI() {
         setTitle("Kotari");
         setMinimumSize(new Dimension(500, 500));
@@ -34,6 +63,7 @@ public class KotariUI extends JFrame {
         pack();
         setVisible(true);
 
+        setUserRolePermissions();
         customerListTable.setAutoCreateRowSorter(true);
 
         btnPrevPeriod.addActionListener(new ActionListener() {
@@ -250,6 +280,24 @@ public class KotariUI extends JFrame {
             }
         });
         updateDisplay();
+        usersButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                UsersDialog dialog = new UsersDialog();
+                dialog.setListener(new DialogOperationListener() {
+                    @Override
+                    public void operationFinished() {
+                        updateDisplay();
+                    }
+
+                    @Override
+                    public void operationCanceled() {
+                        updateDisplay();
+                    }
+                });
+                dialog.setVisible(true);
+            }
+        });
     }
 
     void setActionButtonStatus() {
@@ -481,24 +529,6 @@ public class KotariUI extends JFrame {
         }.execute();
     }
 
-    public static void main(String[] args) {
-        if (!DbUtil.initDatabase()) {
-            System.exit(1);
-        }
-        try {
-            UIManager.setLookAndFeel(
-                    UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        EventQueue.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                new KotariUI().setVisible(true);
-            }
-        });
-    }
-
     private Map<Integer, CustomerInfo> row_to_customer_mapping = null;
     private Vector<Pair<Integer, String>> reading_id_names = null;
     private int selected_reading_index = -1;
@@ -520,4 +550,5 @@ public class KotariUI extends JFrame {
     private JButton deleteReadingButton;
     private JButton printAllButton;
     private JButton metersButton;
+    private JButton usersButton;
 }
