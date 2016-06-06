@@ -32,6 +32,7 @@ public class KotariUI extends JFrame {
 
             case User.ROLE_ADMIN:
                 //usersButton.setVisible(false);
+                changeCompanyNameButton.setVisible(false);
                 break;
 
             case User.ROLE_READER:
@@ -40,6 +41,7 @@ public class KotariUI extends JFrame {
                 // we want it to fallthrough
                 // the reader has a "super-set" of forbidden things
             case User.ROLE_SUPERVISOR:
+                changeCompanyNameButton.setVisible(false);
                 btnPrevPeriod.setVisible(false);
                 nextReadingButton.setVisible(false);
                 deleteReadingButton.setVisible(false);
@@ -143,12 +145,19 @@ public class KotariUI extends JFrame {
                 updateDisplay();
             }
         });
+
         printAllButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                MessageFormat header = new MessageFormat("Page{0,number,integer}");
+                String _header = (Company.getSingleton().name == null ||
+                        (Company.getSingleton().name.isEmpty())) ?
+                        "Electric Bill" :
+                        (Company.getSingleton().name + " Electric Bill");
+                MessageFormat header = new MessageFormat(_header);
+                MessageFormat footer = new MessageFormat("Page{0,number,integer}");
                 try {
-                    customerListTable.print(JTable.PrintMode.FIT_WIDTH, header, null);
+                    customerListTable.print(JTable.PrintMode.FIT_WIDTH, header, footer,
+                            true, null, true, null);
                 } catch (PrinterException msg) {
                     System.err.println("Error in printing " + msg.getMessage());
                 }
@@ -296,6 +305,36 @@ public class KotariUI extends JFrame {
                     }
                 });
                 dialog.setVisible(true);
+            }
+        });
+        changeCompanyNameButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                final String result = JOptionPane.showInputDialog(null,
+                        "Set New Name for company",
+                        "Set Name", JOptionPane.PLAIN_MESSAGE);
+                if (result != null) {
+                    new SwingWorker<Void, Void>() {
+                        @Override
+                        protected Void doInBackground() throws Exception {
+                            try (Connection conn = DriverManager.
+                                    getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
+                                stmt.execute("update company set name = '" + result + "' where id = 1");
+                                Company.getSingleton().name = result;
+                            } catch (SQLException e) {
+                                System.err.println("Error creating name: " + e.getMessage());
+                            }
+                            return null;
+                        }
+
+                        @Override
+                        protected void done() {
+                            updateDisplay();
+                        }
+                    }.execute();
+                } else {
+
+                }
             }
         });
     }
@@ -483,12 +522,26 @@ public class KotariUI extends JFrame {
         String name;
     }
 
+    void updateCompanyInfo() {
+        try (Connection conn = DriverManager.
+                getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
+            ResultSet rs = stmt.executeQuery("select name from company where id = 1");
+            if (rs.next()) {
+                Company.getSingleton().name = rs.getString(1);
+            }
+            rs.close();
+        } catch (SQLException e) {
+            System.err.println("Querying Meter error " + e.getMessage());
+        }
+    }
+
     void updateDisplay() {
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
                 updateReadingValues();
                 updateTableModel();
+                updateCompanyInfo();
                 return null;
             }
 
@@ -524,6 +577,10 @@ public class KotariUI extends JFrame {
                 deleteReadingButton.setEnabled(reading_exists);
 
                 customerListTable.setModel(tableModel);
+                if (Company.getSingleton().name != null &&
+                        !Company.getSingleton().name.isEmpty()) {
+                    textFieldCompanyTitle.setText(Company.getSingleton().name);
+                }
                 setActionButtonStatus();
             }
         }.execute();
@@ -551,4 +608,5 @@ public class KotariUI extends JFrame {
     private JButton printAllButton;
     private JButton metersButton;
     private JButton usersButton;
+    private JButton changeCompanyNameButton;
 }

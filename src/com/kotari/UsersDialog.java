@@ -166,8 +166,11 @@ public class UsersDialog extends JDialog {
         try (Connection conn = DriverManager.
                 getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
 
-            ResultSet rs = stmt.executeQuery("select id, name, role from users where role != " +
-                    User.ROLE_ROOT);
+            int current_user = User.getSingleton().id;
+            // The user should see themselves in the list, could be dangerous
+            ResultSet rs = stmt.executeQuery("select id, name, role from users " +
+                    " where role != " + User.ROLE_ROOT + " AND " +
+                    " id != " + current_user);
 
             Vector<Vector<Object>> data = new Vector<>();
             while (rs.next()) {

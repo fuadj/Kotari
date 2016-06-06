@@ -39,6 +39,13 @@ public class DbUtil {
                     "name               text not null, " +
                     "contact_info       text, " +
                     "location           text);");
+            ResultSet company = stmt.executeQuery("select id from company where id = " + 1);
+            if (!company.next()) {
+                company.close();
+                stmt.execute("insert into company (id, name) values (1, 'Electric Bill')");
+            } else {
+                company.close();
+            }
 
             stmt.execute("create table if not exists meter ( " +
                     "meter_id           integer primary key autoincrement, " +
@@ -89,6 +96,9 @@ public class DbUtil {
                     // changes owners(transferred from one customer to other) the history
                     // should still be correct with the previous customer for the previous reading
                     "c_id integer       references customer(customer_id) ON DELETE CASCADE, " +
+
+                    // to avoid duplicate printing
+                    "reading_printed    integer default 0, " +
 
                     "previous_reading   integer not null, " +
                     "current_reading    integer not null, " +
