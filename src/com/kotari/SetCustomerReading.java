@@ -241,7 +241,9 @@ public class SetCustomerReading extends JDialog {
                             previous_exist = true;
                             previous_reading = rs.getInt(COL_PREVIOUS_READING);
                         }
+                        rs.close();
                     } else {
+                        rs.close();
                         return null;
                     }
 
@@ -339,6 +341,7 @@ public class SetCustomerReading extends JDialog {
                     stmt.setDouble(9, total);
 
                     stmt.execute();
+                    stmt.close();
                     success = true;
                 } catch (SQLException e) {
                     success = false;
