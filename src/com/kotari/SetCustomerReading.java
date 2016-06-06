@@ -9,8 +9,6 @@ import java.awt.*;
 import java.awt.event.*;
 import java.sql.*;
 import java.text.DecimalFormat;
-import java.util.Collections;
-import java.util.Vector;
 import java.util.concurrent.ExecutionException;
 
 public class SetCustomerReading extends JDialog {
@@ -35,15 +33,11 @@ public class SetCustomerReading extends JDialog {
 
     private int mCurrentReadingId;
     private int mCustomerId;
+    private int mMeterId;
 
-    public interface CustomerReadingListener {
-        void readingSet();
-        void cancelSelected();
-    }
+    public DialogOperationListener mListener;
 
-    public CustomerReadingListener mListener;
-
-    public void setListener(CustomerReadingListener listener) {
+    public void setListener(DialogOperationListener listener) {
         mListener = listener;
     }
 
@@ -59,34 +53,18 @@ public class SetCustomerReading extends JDialog {
                                 trim().isEmpty());
     }
 
-    double try_double(String s) {
-        try {
-            return Double.parseDouble(s);
-        } catch (NumberFormatException e) {
-        }
-        return 0;
-    }
-
-    int try_int(String s) {
-        try {
-            return Integer.parseInt(s);
-        } catch (NumberFormatException e) {
-        }
-        return 0;
-    }
-
     int getCurrentReading() {
-        return try_int(dialog_set_reading_current_reading.
+        return CommonUtils.try_int(dialog_set_reading_current_reading.
                 getText().trim());
     }
 
     int getPreviousReading() {
-        return try_int(dialog_set_reading_last_reading.
+        return CommonUtils.try_int(dialog_set_reading_last_reading.
                 getText().trim());
     }
 
     double getServiceCharge() {
-        return try_double(dialog_set_reading_service_charge.
+        return CommonUtils.try_double(dialog_set_reading_service_charge.
                 getText().trim());
     }
 
@@ -186,12 +164,14 @@ public class SetCustomerReading extends JDialog {
         boolean has_previous_reading;
     }
 
-    public void setReadingValues(final int current_reading_id, final int prev_reading_id, final int customer_id) {
+    public void setReadingValues(final int current_reading_id, final int prev_reading_id,
+                                 final int customer_id, final int meter_id) {
         buttonOK.setEnabled(false);
         is_reading_customer_info = true;
 
         mCurrentReadingId = current_reading_id;
         mCustomerId = customer_id;
+        mMeterId = meter_id;
 
         new SwingWorker<ReadingInfo, Void>() {
             @Override
@@ -200,28 +180,20 @@ public class SetCustomerReading extends JDialog {
                         getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
 
                     /**
-                     * Query to check the previous reading for the customer.
-                     * If not found, use the customer's initial reading as the previous reading
+                     * Query to check the last reading of the meter, of not found
+                     * use the initial reading.
                      */
                     String query = "select " +
-                            " c.name, c.initial_reading, c.tariff_type, c_r.reading_id, c_r.current_reading " +
-                            " from customer c LEFT JOIN " +
-                            "       (select * from reading r " +
-                            "           INNER JOIN customer_reading cr " +
-                            "           ON r.reading_id = cr.r_id " +
-                            "               WHERE r.reading_id = " + prev_reading_id + ") c_r " +
-                            " ON (c.customer_id = c_r.c_id) " +
-                            "   WHERE c.customer_id = " + customer_id;
+                            " m.initial_reading, m_r.reading_id, m_r.current_reading " +
+                            " FROM meter m " +
+                            " LEFT JOIN " +
+                            "       (select * from reading r INNER JOIN " +
+                            "       meter_reading mr ON r.reading_id = mr.r_id " +
+                            "       where r.reading_id = " + prev_reading_id + ") m_r " +
+                            " ON m.meter_id = m_r.m_id " +
+                            " where m.meter_id = " + meter_id;
 
                     ResultSet rs = stmt.executeQuery(query);
-
-                    final int COL_INITIAL_READING = 2;
-                    final int COL_READING_ID = 4;
-                    final int COL_PREVIOUS_READING = 5;
-
-                    String customer_name;
-
-                    int tariff_type;
 
                     int previous_reading = 0;
                     int initial_reading = 0;
@@ -229,17 +201,13 @@ public class SetCustomerReading extends JDialog {
                     boolean previous_exist;
 
                     if (rs.next()) {
-                        customer_name = rs.getString(1);
-
-                        tariff_type = rs.getInt(3);
-
-                        // The previous reading doesn't exist, so use the initial reading instead
-                        if (rs.getObject(COL_READING_ID) == null) {
+                        // the previous reading doesn't exist
+                        if (rs.getObject(2) == null) {
                             previous_exist = false;
-                            initial_reading = rs.getInt(COL_INITIAL_READING);
+                            initial_reading = rs.getInt(1);
                         } else {
                             previous_exist = true;
-                            previous_reading = rs.getInt(COL_PREVIOUS_READING);
+                            previous_reading = rs.getInt(3);
                         }
                         rs.close();
                     } else {
@@ -247,10 +215,14 @@ public class SetCustomerReading extends JDialog {
                         return null;
                     }
 
+                    // we aren't checking if the rows exist b/c if it doesn't shit needs to crash!!!
+                    rs = stmt.executeQuery("select name, tariff_type from customer where customer_id = " + customer_id);
+
                     ReadingInfo info = new ReadingInfo();
                     info.customer_id = customer_id;
-                    info.customer_name = customer_name;
-                    info.tariff_type = tariff_type;
+                    info.customer_name = rs.getString(1);
+                    info.tariff_type = rs.getInt(2);
+                    rs.close();
 
                     info.previous_reading_id = prev_reading_id;
                     info.current_reading_id = current_reading_id;
@@ -302,19 +274,20 @@ public class SetCustomerReading extends JDialog {
     private void onOK() {
         final int customer_id = mCustomerId;
         final int reading_id = mCurrentReadingId;
+        final int meter_id = mMeterId;
 
-        final int prev_reading = try_int(dialog_set_reading_last_reading.getText().trim());
-        final int current_reading = try_int(dialog_set_reading_current_reading.getText().trim());
+        final int prev_reading = CommonUtils.try_int(dialog_set_reading_last_reading.getText().trim());
+        final int current_reading = CommonUtils.try_int(dialog_set_reading_current_reading.getText().trim());
 
         final int delta = ((current_reading - prev_reading) >= 0) ?
                 (current_reading - prev_reading) : 0;
 
-        final double service = try_double(dialog_set_reading_service_charge.getText().trim());
+        final double service = CommonUtils.try_double(dialog_set_reading_service_charge.getText().trim());
 
-        final double below = try_double(dialog_set_reading_below_50.getText().trim());
-        final double above = try_double(dialog_set_reading_above_50.getText().trim());
+        final double below = CommonUtils.try_double(dialog_set_reading_below_50.getText().trim());
+        final double above = CommonUtils.try_double(dialog_set_reading_above_50.getText().trim());
 
-        final double total = try_double(dialog_set_reading_total_payment.getText().trim());
+        final double total = CommonUtils.try_double(dialog_set_reading_total_payment.getText().trim());
 
         new SwingWorker<Pair<Boolean, String>, Void>() {
             @Override
@@ -323,22 +296,23 @@ public class SetCustomerReading extends JDialog {
                 String error_msg = null;
 
                 try (Connection conn = DriverManager.getConnection(DbUtil.connection_string)) {
-                    PreparedStatement stmt = conn.prepareStatement("insert into customer_reading " +
-                            "(r_id, c_id, previous_reading, current_reading, delta_change, below_50, " +
+                    PreparedStatement stmt = conn.prepareStatement("insert into meter_reading " +
+                            "(r_id, m_id, c_id, previous_reading, current_reading, delta_change, below_50, " +
                             " above_50, service_charge, total_payment) values " +
-                            " (?, ?, ?, ?, ?, ?, ?, ?, ?) ");
+                            " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ");
                     stmt.setQueryTimeout(10);       // this is seconds
                     stmt.setInt(1, reading_id);
-                    stmt.setInt(2, customer_id);
-                    stmt.setInt(3, prev_reading);
-                    stmt.setInt(4, current_reading);
-                    stmt.setInt(5, delta);
+                    stmt.setInt(2, meter_id);
+                    stmt.setInt(3, customer_id);
+                    stmt.setInt(4, prev_reading);
+                    stmt.setInt(5, current_reading);
+                    stmt.setInt(6, delta);
 
-                    stmt.setDouble(6, below);
-                    stmt.setDouble(7, above);
-                    stmt.setDouble(8, service);
+                    stmt.setDouble(7, below);
+                    stmt.setDouble(8, above);
+                    stmt.setDouble(9, service);
 
-                    stmt.setDouble(9, total);
+                    stmt.setDouble(10, total);
 
                     stmt.execute();
                     stmt.close();
@@ -356,7 +330,7 @@ public class SetCustomerReading extends JDialog {
                 try {
                     Pair<Boolean, String> result = get();
                     if (result.getKey() == true) {      // i.e: success
-                        mListener.readingSet();
+                        mListener.operationFinished();
                         dispose();
                     } else {
                         dialog_set_reading_result.setVisible(true);
@@ -371,7 +345,7 @@ public class SetCustomerReading extends JDialog {
     }
 
     private void onCancel() {
-// add your code here if necessary
+        mListener.operationCanceled();
         dispose();
     }
 

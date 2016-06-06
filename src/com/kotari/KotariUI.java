@@ -17,6 +17,13 @@ import java.util.*;
  * Created by fuad on 5/2/16.
  */
 public class KotariUI extends JFrame {
+    private CustomerInfo getSelectedCustomerInfo() {
+        int selected_row = customerListTable.getSelectedRow();
+        if (selected_row == -1) return null;
+        int model_index = customerListTable.convertRowIndexToModel(selected_row);
+        return row_to_customer_mapping.get(model_index);
+    }
+
     public KotariUI() {
         setTitle("Kotari");
         setMinimumSize(new Dimension(500, 500));
@@ -47,26 +54,25 @@ public class KotariUI extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 SetCustomerReading dialog = new SetCustomerReading();
-                int selected_row = customerListTable.getSelectedRow();
-                int model_index = customerListTable.convertRowIndexToModel(selected_row);
-                int customer_id = row_to_customer_mapping.get(model_index).customer_id;
+
+                int customer_id = getSelectedCustomerInfo().customer_id;
+                int meter_id = getSelectedCustomerInfo().meter_id;
 
                 int prev_reading_id = -1;
                 if (selected_reading_index > 0) {
                     prev_reading_id = reading_id_names.get(selected_reading_index - 1).getKey();
                 }
 
-                dialog.setReadingValues(current_reading_id, prev_reading_id, customer_id);
+                dialog.setReadingValues(current_reading_id, prev_reading_id,
+                        customer_id, meter_id);
                 dialog.setLocationRelativeTo(customerListTable);
-                dialog.setListener(new SetCustomerReading.CustomerReadingListener() {
+                dialog.setListener(new DialogOperationListener() {
                     @Override
-                    public void readingSet() {
+                    public void operationFinished() {
                         updateDisplay();
                     }
-
                     @Override
-                    public void cancelSelected() {
-                    }
+                    public void operationCanceled() { }
                 });
                 dialog.setVisible(true);
                 updateDisplay();
@@ -76,11 +82,13 @@ public class KotariUI extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 NewCustomerDialog dialog = new NewCustomerDialog();
-                int selected_row = customerListTable.getSelectedRow();
-                int model_index = customerListTable.convertRowIndexToModel(selected_row);
-                int customer_id = row_to_customer_mapping.get(model_index).customer_id;
+
+                int customer_id = getSelectedCustomerInfo().customer_id;
+                int meter_id = getSelectedCustomerInfo().meter_id;
+
                 dialog.setLocationRelativeTo(customerListTable);
-                dialog.setEditStatus(true, customer_id);
+
+                dialog.setCustomerDialogArguments(true, customer_id, meter_id);
                 dialog.setListener(new NewCustomerDialog.CustomerListener() {
                     @Override
                     public void customerAdded() {
@@ -97,9 +105,7 @@ public class KotariUI extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 PrintSingleCustomerDialog dialog = new PrintSingleCustomerDialog();
-                int selected_row = customerListTable.getSelectedRow();
-                int model_index = customerListTable.convertRowIndexToModel(selected_row);
-                int customer_id = row_to_customer_mapping.get(model_index).customer_id;
+                int customer_id = getSelectedCustomerInfo().customer_id;
 
                 dialog.setPrintingValues(customer_id, current_reading_id);
                 dialog.setLocationRelativeTo(customerListTable);
@@ -139,10 +145,9 @@ public class KotariUI extends JFrame {
         deleteCustomerButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                int selected_row = customerListTable.getSelectedRow();
-                int model_index = customerListTable.convertRowIndexToModel(selected_row);
-                int customer_id = row_to_customer_mapping.get(model_index).customer_id;
-                String customer_name = row_to_customer_mapping.get(model_index).name;
+                int customer_id = getSelectedCustomerInfo().customer_id;
+                String customer_name = getSelectedCustomerInfo().name;
+
                 int confirm_result = JOptionPane.showConfirmDialog(null,
                         "This will delete customer: " + customer_name,
                         "Are you Sure?",
@@ -153,7 +158,9 @@ public class KotariUI extends JFrame {
                         protected Void doInBackground() throws Exception {
                             try (Connection conn = DriverManager.
                                     getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
-                                stmt.execute("" + "delete from customer where customer_id = " + customer_id);
+                                stmt.execute("update customer set is_active = " + DbUtil.D_FALSE + ", " +
+                                        " customer_meter_id = " + DbUtil.DEFAULT_METER_ID +
+                                        " where customer_id = " + customer_id);
                             } catch (SQLException e) {
                             }
                             return null;
@@ -215,6 +222,25 @@ public class KotariUI extends JFrame {
                 }
             }
         });
+        metersButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                MeterList dialog = new MeterList();
+                dialog.setListener(new DialogOperationListener() {
+                    @Override
+                    public void operationFinished() {
+                        updateDisplay();
+                    }
+
+                    @Override
+                    public void operationCanceled() {
+                        updateDisplay();
+                    }
+                });
+                dialog.setLocationRelativeTo(customerListTable);
+                dialog.setVisible(true);
+            }
+        });
 
         customerListTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         customerListTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
@@ -233,7 +259,12 @@ public class KotariUI extends JFrame {
             selected = true;
         }
 
-        setReadingButton.setEnabled(selected && selected_reading_index != -1);
+        CustomerInfo info = getSelectedCustomerInfo();
+        boolean has_meter_assigned = info != null &&
+            info.meter_id != DbUtil.DEFAULT_METER_ID;
+
+        setReadingButton.setEnabled(selected && has_meter_assigned &&
+                selected_reading_index != -1);
         printAllButton.setEnabled((customerListTable.getModel().getRowCount() != 0) &&
                 (selected_reading_index != -1));
         deleteCustomerButton.setEnabled(selected);
@@ -243,25 +274,23 @@ public class KotariUI extends JFrame {
 
     private static String[][] columnsToShow = {
             // from the customer table
-            //{"Customer Name", "c.name"},
-            // this will not be shown, only for indexing purposes
+            // not visible, only for indexing
             {"_customer_id_", "c.customer_id"},
 
             {"Name", "c.name"},
-            {"Floor", "c.floor"},
-            {"Shop", "c.shop_location"},
-            //{"Business Type", "c.type_of_business"},
+            {"Address", "c.address"},
+            {"Phone #", "c.phone_number"},
 
-            // from the reading table
-            {"Reading Date", "c_r.date"},
+            // not visible, only for indexing
+            {"_meter_id_", "m.meter_id"},
 
-            // from the customer_reading table
-            {"Previous", "c_r.previous_reading"},
-            {"Current", "c_r.current_reading"},
-            //{"Below 50kW", "c_r.below_50"},
-            //{"Above 50kW", "c_r.above_50"},
-            //{"Service Charge", "c_r.service_charge"},
-            {"Total Payment", "c_r.total_payment"}
+            {"Floor", "m.floor"},
+            {"Shop", "m.shop"},
+
+            {"Reading Date", "m_r.date"},
+            {"Previous", "m_r.previous_reading"},
+            {"Current", "m_r.current_reading"},
+            {"Payment", "m_r.total_payment"}
     };
 
     /**
@@ -272,7 +301,7 @@ public class KotariUI extends JFrame {
         Vector<String> result = new Vector<>();
         for (int i = 0; i < columnsToShow.length; i++) {
             if (index == 0 &&
-                    columnsToShow[i][0].equals("_customer_id_")) continue;
+                    columnsToShow[i][0].startsWith("_")) continue;
 
             result.add(columnsToShow[i][index]);
         }
@@ -329,14 +358,25 @@ public class KotariUI extends JFrame {
                 getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
 
             Vector<String> columnsToSelect = selectColumnIndex(1);
-            String columns = CustomStringUtil.join(columnsToSelect, ",");
+            String _columns = CustomStringUtil.join(columnsToSelect, ",");
             String query = "" +
-                    "select " + columns + " from customer c " +
-                    " LEFT JOIN (select * from " +
-                    "       reading r INNER JOIN customer_reading cr " +
-                    "       ON r.reading_id = cr.r_id " +
-                    "           WHERE r.reading_id = " + current_reading_id + " ) c_r " +
-                    " ON c.customer_id = c_r.c_id ";
+                    "select " + _columns + " from customer c " +
+                    " LEFT JOIN " +
+                    " (select * from reading r INNER JOIN meter_reading mr " +
+                    "       ON r.reading_id = mr.r_id " +
+                    "       where r.reading_id = " + current_reading_id + " ) m_r " +
+                    "   ON c.customer_id = m_r.c_id " +
+                    "" +
+                    " LEFT JOIN " +
+                    " (select * from meter " +
+                    "       where meter_id != " + DbUtil.DEFAULT_METER_ID + ") m " +
+                    " ON m.meter_id = c.customer_meter_id " +
+                    " where is_active = " + DbUtil.D_TRUE;
+            /**
+             * the join with meter is done after the select b/c we also want customers
+             * who don't have a meter assigned to appear in the result. If we did
+             * LEFT JOIN meter m where m.meter_id != DEFAULT, this will remove them.
+             */
 
             ResultSet rs = stmt.executeQuery(query);
 
@@ -347,24 +387,31 @@ public class KotariUI extends JFrame {
                 Vector<Object> vector = new Vector<Object>();
                 CustomerInfo info = new CustomerInfo();
                 for (int i = 1; i <= columnsToSelect.size(); i++) {
-                    if (i == 1) {       // if it is the _customer_id_ column, don't add it to the result data
+                    String column = columnsToSelect.get(i - 1);
+                    if (column.equals("c.customer_id")) {
                         info.customer_id = (Integer) rs.getObject(i);
+                    } else if (column.equals("m.meter_id")) {
+                        Object obj = rs.getObject(i);
+                        if (obj == null) {      // the customer don't have meter set
+                            info.meter_id = DbUtil.DEFAULT_METER_ID;
+                            continue;
+                        }
+                        info.meter_id = (Integer) obj;
                     } else {
                         Object obj = rs.getObject(i);
                         if (obj == null) {
                             vector.add(obj);
                             continue;
                         }
-                        String column = columnsToSelect.get(i - 1);
                         if (column.equals("c.name")) {
                             vector.add(obj);
                             info.name = obj.toString();
-                        } else if (column.equals("c_r.total_payment")) {
+                        } else if (column.equals("m_r.total_payment")) {
                             vector.add(obj + " birr");
-                        } else if (column.equals("c_r.below_50") ||
-                                column.equals("c_r.above_50") ||
-                                column.equals("c_r.previous_reading") ||
-                                column.equals("c_r.current_reading")) {
+                        } else if (column.equals("m_r.below_50") ||
+                                column.equals("m_r.above_50") ||
+                                column.equals("m_r.previous_reading") ||
+                                column.equals("m_r.current_reading")) {
                             vector.add(obj + " Kw");
                         } else {
                             vector.add(obj);
@@ -384,6 +431,7 @@ public class KotariUI extends JFrame {
 
     class CustomerInfo {
         int customer_id;
+        int meter_id;
         String name;
     }
 
@@ -471,4 +519,5 @@ public class KotariUI extends JFrame {
     private JLabel textReadingPeriod;
     private JButton deleteReadingButton;
     private JButton printAllButton;
+    private JButton metersButton;
 }

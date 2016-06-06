@@ -36,6 +36,13 @@ public class NewCustomerDialog extends JDialog {
         mListener = listener;
     }
 
+    void setMeterPropertyName(boolean show, Meter meter) {
+        dialog_new_customer_meter_label.setVisible(show);
+        dialog_new_customer_meter_value.setVisible(show);
+        if (show)
+            dialog_new_customer_meter_value.setText(meter.meter_property_number);
+    }
+
     public NewCustomerDialog() {
         setContentPane(contentPane);
         setModal(true);
@@ -85,9 +92,26 @@ public class NewCustomerDialog extends JDialog {
         dialog_new_customer_btn_select_meter.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
+                SelectMeterDialog dialog = new SelectMeterDialog();
+                dialog.setListener(new SelectMeterDialog.MeterSelectedListener() {
+                    @Override
+                    public void meterSelected(Meter meter) {
+                        mMeterId = meter.meter_id;
+                        setMeterPropertyName(true, meter);
+                    }
 
+                    @Override
+                    public void cancelSelected() {
+                        mMeterId = DbUtil.DEFAULT_METER_ID;
+                        setMeterPropertyName(false, null);
+                    }
+                });
+                dialog.setLocationRelativeTo(NewCustomerDialog.this);
+                dialog.setVisible(true);
             }
         });
+
+        setMeterPropertyName(false, null);
 
         buttonCancel.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
@@ -155,7 +179,6 @@ public class NewCustomerDialog extends JDialog {
                     dialog_new_customer_contract_no.setText(info.contract_number);
                     dialog_new_customer_type_of_business.setText(info.type_of_biz);
                     dialog_new_customer_tariff_type.setSelectedIndex(info.tariff_type);
-                    // TODO: set meter id by some means
                 } catch (ExecutionException | InterruptedException e) {
 
                 }
@@ -179,9 +202,10 @@ public class NewCustomerDialog extends JDialog {
         int meter_id;
     }
 
-    void setEditStatus(boolean is_editing, int customer_id) {
+    void setCustomerDialogArguments(boolean is_editing, int customer_id, int meter_id) {
         mIsEditing = is_editing;
         mCustomerId = customer_id;
+        mMeterId = meter_id;
         configureForEditing();
     }
 
@@ -205,6 +229,15 @@ public class NewCustomerDialog extends JDialog {
             stmt.setInt(8, customer.meter_id);
 
             stmt.execute();
+
+            // Remove the previous guy holding the meter, if he exists
+            // Remove the previous guy holding the meter, if he exists
+            Statement clearPreviousOwnerStmt = conn.createStatement();
+            clearPreviousOwnerStmt.execute(
+                    "UPDATE customer set customer_meter_id = " + DbUtil.DEFAULT_METER_ID +
+                            " where customer_meter_id = " + customer.meter_id + " AND " +
+                            " name != '" + customer.name + "'");
+            clearPreviousOwnerStmt.close();
             success = true;
         } catch (SQLException e) {
             success = false;
@@ -233,7 +266,16 @@ public class NewCustomerDialog extends JDialog {
             stmt.setInt(7, customer.tariff_type);
             stmt.setInt(8, customer.meter_id);
 
-            success = stmt.executeUpdate() == 1;
+            boolean first_success = stmt.executeUpdate() == 1;
+            stmt.close();
+
+            // Remove the previous guy holding the meter, if he exists
+            Statement clearPreviousOwnerStmt = conn.createStatement();
+            success = first_success && clearPreviousOwnerStmt.execute(
+                    "UPDATE customer set customer_meter_id = " + DbUtil.DEFAULT_METER_ID +
+                            " where customer_meter_id = " + customer.meter_id + " AND " +
+                            " customer_id != " + customer_id);
+            clearPreviousOwnerStmt.close();
         } catch (SQLException e) {
             success = false;
             error_msg = e.getMessage();
@@ -251,14 +293,7 @@ public class NewCustomerDialog extends JDialog {
         customer.type_of_business = dialog_new_customer_type_of_business.getText().trim();
         customer.tariff_type = dialog_new_customer_tariff_type.getSelectedIndex();
         customer.is_active = true;
-
-        /*
-        // TODO: copy this stuff for the meter dialog
-        try {
-            customer.initial_reading = Integer.parseInt(dialog_new_customer_current_reading.getText().trim());
-        } catch (NumberFormatException e) {
-        }
-        */
+        customer.meter_id = mMeterId;
 
         new SwingWorker<Pair<Boolean, String>, Void>() {
             @Override
@@ -298,6 +333,7 @@ public class NewCustomerDialog extends JDialog {
 
     private boolean mIsEditing = false;
     private int mCustomerId = -1;
+    private int mMeterId = DbUtil.DEFAULT_METER_ID;
 
     public static void main(String[] args) {
         NewCustomerDialog dialog = new NewCustomerDialog();

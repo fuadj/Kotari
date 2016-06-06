@@ -36,10 +36,6 @@ public class DbUtil {
 
             stmt.execute("create table if not exists meter ( " +
                     "meter_id           integer primary key autoincrement, " +
-
-                    // Just for simplicity, we set this to true ONLY for the DEFAULT meter
-                    "is_default         integer not null, " +
-
                     "property_number    integer not null, " +
                     "initial_reading    integer not null, " +
                     "date_of_install    text, " +
@@ -52,8 +48,7 @@ public class DbUtil {
             if (!rs.next()) {
                 rs.close();
 
-                stmt.execute("insert into meter (is_default, property_number, initial_reading) values " +
-                    String.format(" (%d, %d, %d);", DEFAULT_METER_ID, 0, 0));
+                stmt.execute("insert into meter (property_number, initial_reading) values (0, 0);");
             } else {
                 rs.close();
             }
@@ -80,7 +75,7 @@ public class DbUtil {
                     "reading_id         integer primary key autoincrement, " +
                     "date               text not null);");
 
-            stmt.execute("create table if not exists customer_reading ( " +
+            stmt.execute("create table if not exists meter_reading ( " +
                     "r_id integer       references reading(reading_id) ON DELETE CASCADE, " +
                     "m_id integer       references meter(meter_id) ON DELETE CASCADE, " +
 
