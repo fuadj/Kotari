@@ -1,6 +1,5 @@
 package com.kotari;
 
-import com.sun.deploy.util.StringUtils;
 import javafx.util.Pair;
 
 import javax.swing.*;
@@ -9,6 +8,7 @@ import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.*;
 import java.sql.*;
+import java.text.DecimalFormat;
 import java.util.Collections;
 import java.util.Vector;
 import java.util.concurrent.ExecutionException;
@@ -106,7 +106,7 @@ public class SetCustomerReading extends JDialog {
 
         double payment = below_50 * RATE_BELOW_50 +
                 above_50 * RATE_ABOVE_50 + service;
-        dialog_set_reading_total_payment.setText("" + payment);
+        dialog_set_reading_total_payment.setText("" + format_double(payment));
     }
 
     public SetCustomerReading() {
@@ -117,7 +117,7 @@ public class SetCustomerReading extends JDialog {
 
         setTitle("Set Reading");
 
-        dialog_set_reading_service_charge.setText("" + RATE_SERVICE);
+        dialog_set_reading_service_charge.setEnabled(false);
 
         DocumentListener listener = new DocumentListener() {
             @Override
@@ -142,7 +142,6 @@ public class SetCustomerReading extends JDialog {
             }
         };
         dialog_set_reading_current_reading.getDocument().addDocumentListener(listener);
-        dialog_set_reading_service_charge.getDocument().addDocumentListener(listener);
 
         setOkBtnStatus();
 
@@ -174,7 +173,10 @@ public class SetCustomerReading extends JDialog {
 
     class ReadingInfo {
         String customer_name;
+
         int customer_id;
+        int tariff_type;
+
         int current_reading_id;
         int previous_reading_id;
 
@@ -202,7 +204,7 @@ public class SetCustomerReading extends JDialog {
                      * If not found, use the customer's initial reading as the previous reading
                      */
                     String query = "select " +
-                            " c.name, c.initial_reading, c_r.reading_id, c_r.current_reading " +
+                            " c.name, c.initial_reading, c.tariff_type, c_r.reading_id, c_r.current_reading " +
                             " from customer c LEFT JOIN " +
                             "       (select * from reading r " +
                             "           INNER JOIN customer_reading cr " +
@@ -214,10 +216,12 @@ public class SetCustomerReading extends JDialog {
                     ResultSet rs = stmt.executeQuery(query);
 
                     final int COL_INITIAL_READING = 2;
-                    final int COL_READING_ID = 3;
-                    final int COL_PREVIOUS_READING = 4;
+                    final int COL_READING_ID = 4;
+                    final int COL_PREVIOUS_READING = 5;
 
                     String customer_name;
+
+                    int tariff_type;
 
                     int previous_reading = 0;
                     int initial_reading = 0;
@@ -226,6 +230,8 @@ public class SetCustomerReading extends JDialog {
 
                     if (rs.next()) {
                         customer_name = rs.getString(1);
+
+                        tariff_type = rs.getInt(3);
 
                         // The previous reading doesn't exist, so use the initial reading instead
                         if (rs.getObject(COL_READING_ID) == null) {
@@ -242,6 +248,7 @@ public class SetCustomerReading extends JDialog {
                     ReadingInfo info = new ReadingInfo();
                     info.customer_id = customer_id;
                     info.customer_name = customer_name;
+                    info.tariff_type = tariff_type;
 
                     info.previous_reading_id = prev_reading_id;
                     info.current_reading_id = current_reading_id;
@@ -263,6 +270,8 @@ public class SetCustomerReading extends JDialog {
                     ReadingInfo info = get();
 
                     dialog_set_reading_name.setText(info.customer_name);
+                    dialog_set_reading_service_charge.setText("" + Tariffs.getTariffRate(info.tariff_type));
+
                     String last_reading;
                     if (info.has_previous_reading) {
                         last_reading = "" + info.previous_reading;
@@ -277,6 +286,15 @@ public class SetCustomerReading extends JDialog {
                 is_reading_customer_info = false;
             }
         }.execute();
+    }
+
+    private static final DecimalFormat sFormatter;
+    static {
+        sFormatter = new DecimalFormat("#.####");
+    }
+
+    double format_double(double d) {
+        return Double.valueOf(sFormatter.format(d));
     }
 
     private void onOK() {

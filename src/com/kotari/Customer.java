@@ -1,4 +1,4 @@
-package com.kotari.models;
+package com.kotari;
 
 /**
  * Created by fuad on 5/25/16.
@@ -12,4 +12,5 @@ public class Customer {
     public String type_of_business;
 
     public int initial_reading;
+    public int tariff_type;
 }

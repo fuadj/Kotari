@@ -40,6 +40,7 @@ public class DbUtil {
                     "contract_no        text, " +
                     "type_of_business   text, " +
                     "initial_reading    integer not null, " +
+                    "tariff_type        integer not null, " +
                     "unique(name));");
 
             stmt.execute("create table if not exists reading ( " +
@@ -51,15 +52,16 @@ public class DbUtil {
                     */
 
             stmt.execute("create table if not exists customer_reading ( " +
-                    "r_id integer       references reading(reading_id), " +
-                    "c_id integer       references customer(customer_id), " +
+                    "r_id integer       references reading(reading_id) ON DELETE CASCADE, " +
+                    "c_id integer       references customer(customer_id) ON DELETE CASCADE, " +
                     "previous_reading   integer not null, " +
                     "current_reading    integer not null, " +
                     "delta_change       integer not null, " +
                     "below_50           real not null, " +
                     "above_50           real not null, " +
                     "service_charge     real not null, " +
-                    "total_payment      real not null);");
+                    "total_payment      real not null, " +
+                    "unique(r_id, c_id) ON CONFLICT REPLACE);");
 
         } catch (ClassNotFoundException e) {
             System.err.println(e);

@@ -1,6 +1,5 @@
 package com.kotari;
 
-import com.sun.deploy.util.StringUtils;
 import javafx.util.Pair;
 
 import javax.swing.*;
@@ -9,7 +8,9 @@ import javax.swing.event.ListSelectionListener;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.print.PrinterException;
 import java.sql.*;
+import java.text.MessageFormat;
 import java.util.*;
 
 /**
@@ -25,6 +26,8 @@ public class KotariUI extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         pack();
         setVisible(true);
+
+        customerListTable.setAutoCreateRowSorter(true);
 
         btnPrevPeriod.addActionListener(new ActionListener() {
             @Override
@@ -44,11 +47,13 @@ public class KotariUI extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 SetCustomerReading dialog = new SetCustomerReading();
-                int customer_id = row_to_customer_mapping.get(
-                        customerListTable.getSelectedRow());
+                int selected_row = customerListTable.getSelectedRow();
+                int model_index = customerListTable.convertRowIndexToModel(selected_row);
+                int customer_id = row_to_customer_mapping.get(model_index).customer_id;
+
                 int prev_reading_id = -1;
                 if (selected_reading_index > 0) {
-                    prev_reading_id = reading_id_names.get(selected_reading_index-1).getKey();
+                    prev_reading_id = reading_id_names.get(selected_reading_index - 1).getKey();
                 }
 
                 dialog.setReadingValues(current_reading_id, prev_reading_id, customer_id);
@@ -60,7 +65,8 @@ public class KotariUI extends JFrame {
                     }
 
                     @Override
-                    public void cancelSelected() { }
+                    public void cancelSelected() {
+                    }
                 });
                 dialog.setVisible(true);
                 updateDisplay();
@@ -69,19 +75,47 @@ public class KotariUI extends JFrame {
         infoButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
+                NewCustomerDialog dialog = new NewCustomerDialog();
+                int selected_row = customerListTable.getSelectedRow();
+                int model_index = customerListTable.convertRowIndexToModel(selected_row);
+                int customer_id = row_to_customer_mapping.get(model_index).customer_id;
+                dialog.setLocationRelativeTo(customerListTable);
+                dialog.setEditStatus(true, customer_id);
+                dialog.setListener(new NewCustomerDialog.CustomerListener() {
+                    @Override
+                    public void customerAdded() {
+                        updateDisplay();
+                    }
 
-            }
-        });
-        historyButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-
+                    @Override
+                    public void cancelSelected() { }
+                });
+                dialog.setVisible(true);
             }
         });
         printButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
+                PrintSingleCustomerDialog dialog = new PrintSingleCustomerDialog();
+                int selected_row = customerListTable.getSelectedRow();
+                int model_index = customerListTable.convertRowIndexToModel(selected_row);
+                int customer_id = row_to_customer_mapping.get(model_index).customer_id;
 
+                dialog.setPrintingValues(customer_id, current_reading_id);
+                dialog.setLocationRelativeTo(customerListTable);
+                dialog.setVisible(true);
+                updateDisplay();
+            }
+        });
+        printAllButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                MessageFormat header = new MessageFormat("Page{0,number,integer}");
+                try {
+                    customerListTable.print(JTable.PrintMode.FIT_WIDTH, header, null);
+                } catch (PrinterException msg) {
+                    System.err.println("Error in printing " + msg.getMessage());
+                }
             }
         });
         addCustomerButton.addActionListener(new ActionListener() {
@@ -98,14 +132,39 @@ public class KotariUI extends JFrame {
                     public void cancelSelected() {
                     }
                 });
-                dialog.setLocationRelativeTo(addCustomerButton);
+                dialog.setLocationRelativeTo(customerListTable);
                 dialog.setVisible(true);
             }
         });
         deleteCustomerButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
+                int selected_row = customerListTable.getSelectedRow();
+                int model_index = customerListTable.convertRowIndexToModel(selected_row);
+                int customer_id = row_to_customer_mapping.get(model_index).customer_id;
+                String customer_name = row_to_customer_mapping.get(model_index).name;
+                int confirm_result = JOptionPane.showConfirmDialog(null,
+                        "This will delete customer: " + customer_name,
+                        "Are you Sure?",
+                        JOptionPane.YES_NO_OPTION);
+                if (confirm_result == JOptionPane.YES_OPTION) {
+                    new SwingWorker<Void, Void>() {
+                        @Override
+                        protected Void doInBackground() throws Exception {
+                            try (Connection conn = DriverManager.
+                                    getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
+                                stmt.execute("" + "delete from customer where customer_id = " + customer_id);
+                            } catch (SQLException e) {
+                            }
+                            return null;
+                        }
 
+                        @Override
+                        protected void done() {
+                            updateDisplay();
+                        }
+                    }.execute();
+                }
             }
         });
         newReadingButton.addActionListener(new ActionListener() {
@@ -126,6 +185,36 @@ public class KotariUI extends JFrame {
                 dialog.setVisible(true);
             }
         });
+        deleteReadingButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String current_reading_name = reading_id_names.get(selected_reading_index).getValue();
+                int confirm_result = JOptionPane.showConfirmDialog(null,
+                        "This will delete all data regarding " + current_reading_name,
+                        "Are you Sure?",
+                        JOptionPane.YES_NO_OPTION);
+                if (confirm_result == JOptionPane.YES_OPTION) {
+                    new SwingWorker<Void, Void>() {
+                        @Override
+                        protected Void doInBackground() throws Exception {
+                            try (Connection conn = DriverManager.
+                                    getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
+                                stmt.execute("" + "delete from reading where reading_id = " + current_reading_id);
+                            } catch (SQLException e) {
+                            }
+                            return null;
+                        }
+
+                        @Override
+                        protected void done() {
+                            updateDisplay();
+                        }
+                    }.execute();
+                } else {
+
+                }
+            }
+        });
 
         customerListTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         customerListTable.getSelectionModel().addListSelectionListener(new ListSelectionListener() {
@@ -134,14 +223,7 @@ public class KotariUI extends JFrame {
                 setActionButtonStatus();
             }
         });
-        setActionButtonStatus();
-
-        addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowOpened(WindowEvent e) {
-                updateDisplay();
-            }
-        });
+        updateDisplay();
     }
 
     void setActionButtonStatus() {
@@ -152,8 +234,10 @@ public class KotariUI extends JFrame {
         }
 
         setReadingButton.setEnabled(selected && selected_reading_index != -1);
+        printAllButton.setEnabled((customerListTable.getModel().getRowCount() != 0) &&
+                (selected_reading_index != -1));
+        deleteCustomerButton.setEnabled(selected);
         infoButton.setEnabled(selected);
-        historyButton.setEnabled(selected);
         printButton.setEnabled(selected);
     }
 
@@ -174,8 +258,8 @@ public class KotariUI extends JFrame {
             // from the customer_reading table
             {"Previous", "c_r.previous_reading"},
             {"Current", "c_r.current_reading"},
-            {"Below 50kW", "c_r.below_50"},
-            {"Above 50kW", "c_r.above_50"},
+            //{"Below 50kW", "c_r.below_50"},
+            //{"Above 50kW", "c_r.above_50"},
             //{"Service Charge", "c_r.service_charge"},
             {"Total Payment", "c_r.total_payment"}
     };
@@ -234,7 +318,9 @@ public class KotariUI extends JFrame {
     void updateTableModel() {
         tableModel = new DefaultTableModel() {
             @Override
-            public boolean isCellEditable(int row, int column) { return false; }
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
         };
 
         row_to_customer_mapping = new HashMap<>();
@@ -242,7 +328,8 @@ public class KotariUI extends JFrame {
         try (Connection conn = DriverManager.
                 getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
 
-            String columns = StringUtils.join(selectColumnIndex(1), ",");
+            Vector<String> columnsToSelect = selectColumnIndex(1);
+            String columns = CustomStringUtil.join(columnsToSelect, ",");
             String query = "" +
                     "select " + columns + " from customer c " +
                     " LEFT JOIN (select * from " +
@@ -258,13 +345,33 @@ public class KotariUI extends JFrame {
             Vector<Vector<Object>> data = new Vector<Vector<Object>>();
             while (rs.next()) {
                 Vector<Object> vector = new Vector<Object>();
-                for (int i = 1; i <= columnNames.size(); i++) {
-                    if (i == 1) {
-                        row_to_customer_mapping.put(data.size(), (Integer)rs.getObject(i));
+                CustomerInfo info = new CustomerInfo();
+                for (int i = 1; i <= columnsToSelect.size(); i++) {
+                    if (i == 1) {       // if it is the _customer_id_ column, don't add it to the result data
+                        info.customer_id = (Integer) rs.getObject(i);
                     } else {
-                        vector.add(rs.getObject(i));
+                        Object obj = rs.getObject(i);
+                        if (obj == null) {
+                            vector.add(obj);
+                            continue;
+                        }
+                        String column = columnsToSelect.get(i - 1);
+                        if (column.equals("c.name")) {
+                            vector.add(obj);
+                            info.name = obj.toString();
+                        } else if (column.equals("c_r.total_payment")) {
+                            vector.add(obj + " birr");
+                        } else if (column.equals("c_r.below_50") ||
+                                column.equals("c_r.above_50") ||
+                                column.equals("c_r.previous_reading") ||
+                                column.equals("c_r.current_reading")) {
+                            vector.add(obj + " Kw");
+                        } else {
+                            vector.add(obj);
+                        }
                     }
                 }
+                row_to_customer_mapping.put(data.size(), info);
                 data.add(vector);
             }
 
@@ -273,6 +380,11 @@ public class KotariUI extends JFrame {
         } catch (Exception e) {
             System.err.println("Exception in Load Data" + e.getMessage());
         }
+    }
+
+    class CustomerInfo {
+        int customer_id;
+        String name;
     }
 
     void updateDisplay() {
@@ -293,9 +405,11 @@ public class KotariUI extends JFrame {
                     textReadingPeriod.setText(current.getValue());
                 }
 
+                boolean reading_exists = true;
                 boolean enable_prev, enable_next;
                 if (reading_id_names == null || reading_id_names.isEmpty()) {
                     enable_next = enable_prev = false;
+                    reading_exists = false;
                 } else {
                     if (selected_reading_index == 0) {
                         enable_prev = false;
@@ -311,9 +425,10 @@ public class KotariUI extends JFrame {
 
                 nextReadingButton.setEnabled(enable_next);
                 btnPrevPeriod.setEnabled(enable_prev);
+                deleteReadingButton.setEnabled(reading_exists);
 
                 customerListTable.setModel(tableModel);
-
+                setActionButtonStatus();
             }
         }.execute();
     }
@@ -336,7 +451,7 @@ public class KotariUI extends JFrame {
         });
     }
 
-    private Map<Integer, Integer> row_to_customer_mapping = null;
+    private Map<Integer, CustomerInfo> row_to_customer_mapping = null;
     private Vector<Pair<Integer, String>> reading_id_names = null;
     private int selected_reading_index = -1;
     private int current_reading_id = -1;
@@ -348,11 +463,12 @@ public class KotariUI extends JFrame {
     private JButton nextReadingButton;
     private JTable customerListTable;
     private JButton infoButton;
-    private JButton historyButton;
     private JButton printButton;
     private JButton setReadingButton;
     private JButton addCustomerButton;
     private JButton deleteCustomerButton;
     private JButton newReadingButton;
     private JLabel textReadingPeriod;
+    private JButton deleteReadingButton;
+    private JButton printAllButton;
 }
