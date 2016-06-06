@@ -72,7 +72,7 @@ public class DbUtil {
                     "contract_no        text, " +
                     "type_of_business   text, " +
                     "tariff_type        integer not null, " +
-                    "customer_meter     integer DEFAULT " + DEFAULT_METER_ID +
+                    "customer_meter_id  integer DEFAULT " + DEFAULT_METER_ID +
                     "   REFERENCES meter(meter_id) ON DELETE SET DEFAULT, " +
                     "unique(name));");
 

@@ -5,12 +5,11 @@ package com.kotari;
  */
 public class Customer {
     public String name;
-    public String floor;
-    public String shop_location;
-    public String date_of_install;
+    public String address;
+    public boolean is_active;
+    public String phone;
     public String contract_no;
     public String type_of_business;
-
-    public int initial_reading;
     public int tariff_type;
+    public int meter_id;
 }
