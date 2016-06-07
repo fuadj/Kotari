@@ -102,7 +102,10 @@ public class MeterList extends JDialog {
         dialog_meter_list_btn_history.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-
+                int meter_id = getSelectedMeterInfo().meter_id;
+                MeterHistory history = new MeterHistory();
+                history.setMeterId(meter_id);
+                history.setVisible(true);
             }
         });
         dialog_meter_list_btn_delete.addActionListener(new ActionListener() {
