@@ -319,7 +319,8 @@ public class KotariUI extends JFrame {
                         protected Void doInBackground() throws Exception {
                             try (Connection conn = DriverManager.
                                     getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
-                                stmt.execute("update company set name = '" + result + "' where id = 1");
+                                stmt.execute("update company set name = '" +
+                                        User.hashPassword(result) + "' where id = 1");
                                 Company.getSingleton().name = result;
                             } catch (SQLException e) {
                                 System.err.println("Error creating name: " + e.getMessage());
@@ -527,7 +528,7 @@ public class KotariUI extends JFrame {
                 getConnection(DbUtil.connection_string); Statement stmt = conn.createStatement()) {
             ResultSet rs = stmt.executeQuery("select name from company where id = 1");
             if (rs.next()) {
-                Company.getSingleton().name = rs.getString(1);
+                Company.getSingleton().name = User.hashPassword(rs.getString(1));
             }
             rs.close();
         } catch (SQLException e) {
